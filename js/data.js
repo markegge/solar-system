@@ -13,8 +13,10 @@
 // - Spin-axis orientation (pole RA/Dec) and prime-meridian angle W0 at J2000:
 //   Archinal et al. (2018), "Report of the IAU Working Group on Cartographic Coordinates
 //   and Rotational Elements: 2015", Celest. Mech. Dyn. Astr. 130:22.
-// - Moon orbit (mean elements): Meeus, "Astronomical Algorithms" (2nd ed.) ch. 47,
-//   truncated to mean terms.
+// - Moon position and orientation: astronomy-engine v2.1.19 (MIT, vendored in js/vendor/):
+//   Brown / Improved Lunar Ephemeris series precessed to J2000, and the IAU WGCCRE lunar
+//   orientation model with periodic terms. See js/moon.js; verified against JPL Horizons and
+//   USNO phase times in tools/check.mjs.
 // - Other satellites: JPL Planetary Satellite Mean Elements,
 //   https://ssd.jpl.nasa.gov/sats/elem/  and NASA satellite fact sheets.
 //   (Mean longitudes at epoch for satellites other than the Moon are illustrative.)
@@ -78,7 +80,7 @@ export const BODIES = [
   {
     id: 'moon', name: 'Moon', type: 'Moon', parent: 'earth',
     radiusKm: 1737.4, rotationH: 655.72, tiltDeg: 6.68, orbitDays: 27.321661,
-    locked: true, moon: { aKm: 384400, e: 0.0549, iDeg: 5.145, luna: true },
+    locked: true, moon: { aKm: 384400, e: 0.0549, iDeg: 5.145, luna: true }, // aKm/e/i: display + visible-scale only
     color: '#bdbab4', texture: 'textures/2k_moon.jpg',
     fact: 'The Moon is tidally locked: it turns once per orbit, so the same face always points at Earth.',
   },

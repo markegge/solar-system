@@ -1,6 +1,7 @@
 // Orbital mechanics helpers (no Three.js dependency, so this also runs under Node for checks).
 // All vectors are plain [x, y, z] arrays in the J2000 ECLIPTIC frame unless noted.
 import { PLANET_ELEMENTS, BODY_BY_ID, J2000, OBLIQUITY_DEG } from './data.js';
+import { moonGeocentricKm } from './moon.js';
 
 const DEG = Math.PI / 180;
 
@@ -106,33 +107,17 @@ export function rotationAngle(body, jd) {
 
 // --- Satellites --------------------------------------------------------------------
 
-// Mean elements of the Moon (Meeus ch. 47, mean terms only), degrees
-function lunaElements(jd) {
-  const d = jd - J2000;
-  const L = 218.3164477 + 13.17639648 * d;   // mean longitude
-  const M = 134.9633964 + 13.06499295 * d;   // mean anomaly
-  const Omega = 125.0445479 - 0.0529538083 * d; // ascending node
-  return { L, M, Omega };
-}
-
 /**
  * Satellite position relative to its parent (km, ecliptic).
  * Returns { pos, normal, M, nu } where normal is the orbit normal (unit), M/nu in radians.
+ * (For the Moon only { pos } is returned.)
  */
 export function satellitePosition(body, jd, parentBasis) {
   const m = body.moon;
   const e = m.e;
   if (m.luna) {
-    const { L, M, Omega } = lunaElements(jd);
-    const omega = (L - M) - Omega; // argument of perigee
-    const Mr = M * DEG;
-    const E = solveKepler(Mr, e);
-    const nu = trueAnomaly(E, e);
-    const r = m.aKm * (1 - e * Math.cos(E));
-    const pos = orbitalToRef(r * Math.cos(nu), r * Math.sin(nu), omega * DEG, Omega * DEG, m.iDeg * DEG);
-    const ci = Math.cos(m.iDeg * DEG), si = Math.sin(m.iDeg * DEG), Or = Omega * DEG;
-    const normal = [si * Math.sin(Or), -si * Math.cos(Or), ci];
-    return { pos, normal, M: Mr, nu };
+    // Precise lunar theory (see moon.js); orientation is handled separately (IAU model)
+    return { pos: moonGeocentricKm(jd) };
   }
   // Generic: orbit in the parent's equatorial plane, inclined by i about the node u.
   const { n, u, v } = parentBasis;
@@ -153,12 +138,8 @@ export function satelliteOrbitPath(body, jd, parentBasis, n = 180) {
   const m = body.moon, e = m.e;
   const pts = [];
   if (m.luna) {
-    const { L, M, Omega } = lunaElements(jd);
-    const omega = (L - M) - Omega;
-    for (let k = 0; k <= n; k++) {
-      const E = (k / n) * 2 * Math.PI;
-      pts.push(orbitalToRef(m.aKm * (Math.cos(E) - e), m.aKm * Math.sqrt(1 - e * e) * Math.sin(E), omega * DEG, Omega * DEG, m.iDeg * DEG));
-    }
+    // The real path over one sidereal month centred on jd (passes exactly through the Moon)
+    for (let k = 0; k <= n; k++) pts.push(moonGeocentricKm(jd + (k / n - 0.5) * body.orbitDays));
     return pts;
   }
   const { n: nn, u, v } = parentBasis;

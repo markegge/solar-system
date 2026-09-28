@@ -1,0 +1,10 @@
+{
+  "source": "JPL Horizons API, fetched 2026-09-28. COMMAND='301', CENTER='500@399', EPHEM_TYPE=OBSERVER, QUANTITIES='14' (observer sub-longitude / sub-latitude on the Moon, i.e. the libration), ANG_FORMAT=DEG, times UT.",
+  "columns": ["utc", "sub_lon_deg", "sub_lat_deg"],
+  "rows": [
+    ["2020-03-15T00:00:00Z", 7.113574, -2.971698],
+    ["2022-07-04T12:00:00Z", 353.758935, -6.234313],
+    ["2026-09-28T00:00:00Z", 355.792968, -5.299328],
+    ["2029-09-01T00:00:00Z", 355.655038, -2.859938]
+  ]
+}

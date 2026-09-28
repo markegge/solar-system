@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { BODIES, BODY_BY_ID, AU_KM, EARTH_R_KM } from './data.js';
 import * as O from './orbits.js';
+import { moonOrientation } from './moon.js';
 import { QUESTIONS } from './questions.js';
 import { makeProceduralTexture, makeGlowCanvas } from './textures.js';
 import { fmtNum, fmtDuration, fmtDurationSub, fmtDistanceKm } from './format.js';
@@ -25,6 +26,7 @@ const SPEEDS = [
 const JD_MIN = 2305447.5; // 1600-01-01
 const JD_MAX = 2597640.5; // 2400-01-01
 const VIS_D = 60, VIS_P = 0.6; // visible scale: d = 60 * r_AU^0.6 (scene units)
+const EARTH_MOON_MASS_RATIO_PLUS_1 = 82.30056; // 1 + M_earth / M_moon (IAU 2009: 81.30056)
 const KEY_BODIES = ['sun', 'mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto'];
 
 const nowJD = () => Date.now() / 86400000 + 2440587.5;
@@ -253,7 +255,7 @@ function moonScale(b, scale = S.scale) { // km -> scene units
 const firstMoon = {};
 for (const b of BODIES) if (b.moon && !firstMoon[b.parent]) firstMoon[b.parent] = b;
 
-let orbitsJD = { planets: -1e9, moons: -1e9 };
+let orbitsJD = { planets: -1e9, moons: -1e9, luna: -1e9, lunaReal: 0 };
 function rebuildOrbits(force = false) {
   if (force || Math.abs(S.jd - orbitsJD.planets) > 3652) {
     orbitsJD.planets = S.jd;
@@ -264,10 +266,18 @@ function rebuildOrbits(force = false) {
       R[b.id].orbitLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
     }
   }
-  if (force || Math.abs(S.jd - orbitsJD.moons) > 2) {
-    orbitsJD.moons = S.jd;
+  const nowMs = performance.now();
+  if (force || (Math.abs(S.jd - orbitsJD.luna) > 0.1 && nowMs - orbitsJD.lunaReal > 200)) {
+    // The Moon's drawn path is its real path over one month centred on now
+    orbitsJD.luna = S.jd; orbitsJD.lunaReal = nowMs;
+    const b = BODY_BY_ID.moon, k = moonScale(b);
+    const pts = O.satelliteOrbitPath(b, S.jd, null, 160).map(p => vec(toThree(O.scale(p, k))));
+    R.moon.orbitLine.geometry.dispose();
+    R.moon.orbitLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+  }
+  if (force) {
     for (const b of BODIES) {
-      if (!b.moon) continue;
+      if (!b.moon || b.moon.luna) continue;
       const k = moonScale(b);
       const pts = O.satelliteOrbitPath(b, S.jd, R[b.parent].basis).map(p => vec(toThree(O.scale(p, k))));
       R[b.id].orbitLine.geometry.dispose();
@@ -310,12 +320,23 @@ function updateWorld() {
     const sat = O.satellitePosition(b, jd, pr.basis);
     r.sat = sat;
     r.parentKm = O.len(sat.pos);
-    r.world = O.add(pr.world, toThree(O.scale(sat.pos, moonScale(b))));
+    const off = toThree(O.scale(sat.pos, moonScale(b)));
+    if (b.moon.luna) {
+      // The planetary elements give the Earth-Moon barycentre; put Earth and Moon either side of it
+      pr.world = O.sub(pr.world, O.scale(off, 1 / EARTH_MOON_MASS_RATIO_PLUS_1));
+    }
+    r.world = O.add(pr.world, off);
   }
   // Rotation
   for (const b of BODIES) {
     const r = R[b.id];
-    if (b.locked && r.sat) {
+    if (b.moon && b.moon.luna) {
+      // IAU lunar orientation (pole + prime meridian with periodic terms => physical libration)
+      const o = moonOrientation(jd);
+      const n = O.poleVector(o.raDeg, o.decDeg), u = O.unit(O.nodeVector(o.raDeg));
+      r.tilt.quaternion.copy(basisQuaternion(toThree(u), toThree(n)));
+      r.mesh.rotation.y = o.W * DEG;
+    } else if (b.locked && r.sat) {
       // Spin axis = orbit normal; mean rotation keeps longitude 0 facing the parent,
       // offset by (true - mean anomaly) so libration from the eccentric orbit shows up.
       const toParent = toThree(O.scale(r.sat.pos, -1));
