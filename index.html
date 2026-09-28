@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Orrery: an interactive 3D solar system</title>
+<meta name="description" content="Interactive 3D model of the solar system with real orbital and rotation data. How long is a day on the Moon? Find out.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='9' fill='%23ffc857'/%3E%3Cellipse cx='32' cy='32' rx='27' ry='11' fill='none' stroke='%239fb3ff' stroke-width='3'/%3E%3Ccircle cx='57' cy='34' r='4' fill='%236fa8ff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="scene" aria-label="3D view of the solar system"></canvas>
+<div id="labels" aria-hidden="true"></div>
+
+<div id="loading"><div class="spinner"></div><span>Loading the solar system…</span></div>
+
+<!-- Top bar: brand + clock -->
+<header id="topbar">
+  <div class="brand"><span class="logo"></span>Orrery</div>
+  <div id="clock" class="panel">
+    <div class="clock-date" id="clockDate">—</div>
+    <div class="clock-sub"><span id="clockTime">—</span> <span class="utc">UTC</span><span id="rangeWarn" class="warn" hidden title="The planetary elements used are fitted for 1800 to 2050; positions outside that range are approximate.">approx.</span></div>
+  </div>
+  <div class="top-actions">
+    <button id="btnQuestions" class="chip accent">Questions</button>
+    <button id="btnHelp" class="chip icon" title="Controls and credits (H)" aria-label="Help">?</button>
+  </div>
+</header>
+
+<!-- Left: body list -->
+<aside id="bodies" class="panel">
+  <button id="bodiesToggle" class="panel-title" aria-expanded="true">Bodies <span class="caret"></span></button>
+  <ul id="bodyList"></ul>
+</aside>
+
+<!-- Right: info -->
+<aside id="info" class="panel">
+  <div class="info-head">
+    <div>
+      <div id="infoType" class="eyebrow">—</div>
+      <h2 id="infoName">—</h2>
+    </div>
+    <button id="infoCollapse" class="chip icon" aria-label="Collapse info panel" title="Collapse">–</button>
+  </div>
+  <div id="infoBody">
+    <dl id="infoStats"></dl>
+    <p id="infoFact" class="fact"></p>
+    <div class="info-actions">
+      <button id="btnFlyHere" class="chip">Fly from here</button>
+    </div>
+  </div>
+</aside>
+
+<!-- Bottom: time + view controls -->
+<footer id="controls" class="panel">
+  <div class="row time-row">
+    <button id="btnReverse" class="ctl" title="Reverse time (R)" aria-label="Reverse time">
+      <svg viewBox="0 0 24 24"><path d="M11 6v12L2.5 12 11 6zm10 0v12l-8.5-6L21 6z"/></svg>
+    </button>
+    <button id="btnSlower" class="ctl" title="Slower (,)" aria-label="Slower">
+      <svg viewBox="0 0 24 24"><path d="M5 11h14v2H5z"/></svg>
+    </button>
+    <button id="btnPlay" class="ctl play" title="Play / pause (Space)" aria-label="Play or pause">
+      <svg class="i-pause" viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
+      <svg class="i-play" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></svg>
+    </button>
+    <button id="btnFaster" class="ctl" title="Faster (.)" aria-label="Faster">
+      <svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>
+    </button>
+    <div class="speed">
+      <input id="speedSlider" type="range" min="0" max="9" step="1" value="5" aria-label="Playback speed">
+      <div id="speedLabel" class="speed-label">1 day / s</div>
+    </div>
+    <div class="date-ctl">
+      <button id="btnNow" class="chip" title="Jump to the current time (N)">Now</button>
+      <input id="datePicker" type="datetime-local" step="60" aria-label="Simulated date and time (UTC)">
+    </div>
+  </div>
+  <div class="row view-row">
+    <div class="seg" role="group" aria-label="Camera mode">
+      <button id="modeOrbit" class="on" title="Orbit a body (F toggles)">Orbit</button>
+      <button id="modeFly" title="Free flight: WASD + QE, drag to look (F toggles)">Fly</button>
+    </div>
+    <div class="seg" role="group" aria-label="Scale">
+      <button id="scaleVisible" class="on" title="Exaggerated sizes and compressed distances (T toggles)">Visible scale</button>
+      <button id="scaleTrue" title="Real sizes and distances (T toggles)">True scale</button>
+    </div>
+    <label class="tog"><input id="togOrbits" type="checkbox" checked><span>Orbits</span></label>
+    <label class="tog"><input id="togLabels" type="checkbox" checked><span>Labels</span></label>
+    <label class="tog"><input id="togMarkers" type="checkbox"><span>Axes &amp; markers</span></label>
+    <div id="flyHud" class="fly-hud" hidden>
+      <span id="flySpeed">—</span>
+      <label class="tog small"><input id="togFlyFrame" type="checkbox" checked><span id="flyFrameLabel">Move with body</span></label>
+    </div>
+  </div>
+</footer>
+
+<!-- Touch fly pad -->
+<div id="flyPad" hidden>
+  <div class="pad-grid">
+    <button data-k="up" aria-label="Up">↑<small>up</small></button>
+    <button data-k="fwd" aria-label="Forward">▲</button>
+    <button data-k="down" aria-label="Down">↓<small>down</small></button>
+    <button data-k="left" aria-label="Left">◀</button>
+    <button data-k="back" aria-label="Back">▼</button>
+    <button data-k="right" aria-label="Right">▶</button>
+  </div>
+  <button id="padBoost" class="boost" aria-label="Boost">×10</button>
+</div>
+
+<!-- Questions -->
+<div id="questions" class="panel sheet" hidden>
+  <div class="sheet-head"><h3>Questions</h3><button class="chip icon close" data-close="questions" aria-label="Close">×</button></div>
+  <ul id="questionList"></ul>
+</div>
+
+<div id="answer" class="panel" hidden>
+  <div class="sheet-head"><h3 id="answerQ"></h3><button class="chip icon close" data-close="answer" aria-label="Close">×</button></div>
+  <div id="answerBody"></div>
+</div>
+
+<!-- Help -->
+<div id="help" class="modal" hidden>
+  <div class="panel modal-card">
+    <div class="sheet-head"><h3>Controls</h3><button class="chip icon close" data-close="help" aria-label="Close">×</button></div>
+    <div class="help-grid">
+      <div>
+        <h4>Everywhere</h4>
+        <ul class="keys">
+          <li><kbd>Space</kbd> play / pause</li>
+          <li><kbd>,</kbd> <kbd>.</kbd> slower / faster</li>
+          <li><kbd>R</kbd> reverse time &nbsp; <kbd>N</kbd> now</li>
+          <li><kbd>F</kbd> orbit / fly mode</li>
+          <li><kbd>T</kbd> visible / true scale</li>
+          <li><kbd>0</kbd>–<kbd>9</kbd> Sun, planets, Pluto</li>
+          <li><kbd>O</kbd> orbits &nbsp; <kbd>L</kbd> labels &nbsp; <kbd>M</kbd> markers</li>
+          <li>Click a body or its label to follow it</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Orbit mode</h4>
+        <ul class="keys">
+          <li>Drag to rotate, scroll or pinch to zoom</li>
+          <li>Right-drag or two-finger drag to pan</li>
+        </ul>
+        <h4>Fly mode</h4>
+        <ul class="keys">
+          <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move, <kbd>Q</kbd><kbd>E</kbd> down / up</li>
+          <li>Drag to look around</li>
+          <li><kbd>Shift</kbd> ×10 &nbsp; <kbd>Alt</kbd> ×0.1 &nbsp; scroll = base speed</li>
+          <li>Speed scales with distance to the nearest body</li>
+        </ul>
+      </div>
+    </div>
+    <h4>About the model</h4>
+    <p class="small">Planet positions use JPL's J2000 Keplerian elements (Standish, valid 1800 to 2050) propagated for the simulated date. Radii, rotation periods and axial tilts come from NASA's planetary fact sheets, spin-axis orientation from the IAU WGCCRE 2015 report. <b>Solar day</b> = 1 / (1/sidereal day − 1/year), with retrograde spin counted as negative. In <i>visible scale</i> sizes are enlarged and distances compressed so you can see everything; <i>true scale</i> shows the real, very empty, solar system. Eclipses and shadows are not modelled.</p>
+    <p class="small">Textures: <a href="https://www.solarsystemscope.com/textures/" target="_blank" rel="noopener">Solar System Scope</a> (CC BY 4.0), based on NASA imagery. Smaller moons and Pluto use procedural textures. Built with <a href="https://threejs.org" target="_blank" rel="noopener">three.js</a>. <a href="https://github.com/markegge/solar-system" target="_blank" rel="noopener">Source on GitHub</a>.</p>
+  </div>
+</div>
+
+<div id="toast" hidden></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
